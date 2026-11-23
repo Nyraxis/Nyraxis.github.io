@@ -42,8 +42,32 @@ function md(src, base) {
 }
 
 /* ---------- Laden ---------- */
+/* ---------- Artikelordner finden (ohne Backend, ohne Node) ----------
+   1. index.json   – wird vom GitHub-Actions-Workflow beim Deploy erzeugt
+   2. GitHub-API   – Fallback auf *.github.io, wenn kein Workflow läuft (Owner/Repo werden aus der URL erkannt)
+   3. Verzeichnis-Listing – für lokalen Test mit `python3 -m http.server` */
+async function listFolders() {
+  const tryJson = async () => { const r = await fetch(CONFIG.articlesPath + 'index.json'); if (!r.ok) throw 0; return r.json(); };
+  const tryGithub = async () => {
+    const m = location.hostname.match(/^(.+)\.github\.io$/); if (!m) throw 0;
+    const repo = location.pathname.split('/')[1] || location.hostname;
+    const r = await fetch(`https://api.github.com/repos/${m[1]}/${repo}/contents/${CONFIG.articlesPath.replace(/\/$/, '')}`);
+    if (!r.ok) throw 0;
+    return (await r.json()).filter(x => x.type === 'dir').map(x => x.name);
+  };
+  const tryListing = async () => {
+    const r = await fetch(CONFIG.articlesPath); if (!r.ok) throw 0;
+    const names = [...(await r.text()).matchAll(/href="([^"?#\/][^"?#]*)\/"/g)].map(x => decodeURIComponent(x[1]));
+    if (!names.length) throw 0; return names;
+  };
+  for (const fn of [tryJson, tryGithub, tryListing]) {
+    try { return (await fn()).sort().reverse(); } catch (e) { /* nächster Weg */ }
+  }
+  throw new Error('Keine Artikelliste gefunden');
+}
+
 async function loadArticles() {
-  const folders = await (await fetch(CONFIG.articlesPath + 'index.json')).json();
+  const folders = await listFolders();
   const list = await Promise.all(folders.map(async f => {
     try {
       const base = `${CONFIG.articlesPath}${f}/`;
@@ -158,6 +182,6 @@ function render() {
   $('#instagram-top').href = $('#instagram-footer').href = CONFIG.instagram;
   $('#nav').innerHTML = CONFIG.categories.map(c => `<a href="#/${c.slug}" data-slug="${c.slug}">${esc(c.name)}</a>`).join('') + '<a href="#/kontakt" data-slug="kontakt">Kontakt</a>';
   try { ALL = await loadArticles(); }
-  catch (e) { $('#app').innerHTML = '<p class="empty">Artikel konnten nicht geladen werden. Bitte über einen lokalen Server öffnen (z. B. <code>python3 -m http.server</code>).</p>'; return; }
+  catch (e) { $('#app').innerHTML = '<p class="empty">Artikel konnten nicht geladen werden. Bitte über GitHub Pages oder einen lokalen Server (<code>python3 -m http.server</code>) öffnen.</p>'; return; }
   window.addEventListener('hashchange', render); render();
 })();

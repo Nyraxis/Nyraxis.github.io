@@ -1,0 +1,33 @@
+# Veröffentlicht die Seite auf GitHub Pages und erzeugt dabei src/articles/index.json.
+# Einmalig: Repo -> Settings -> Pages -> Source: "GitHub Actions".
+name: Deploy Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Artikelliste erzeugen
+        run: |
+          ls -1 src/articles | sort -r | jq -R . | jq -s . > /tmp/index.json
+          mv /tmp/index.json src/articles/index.json
+          cat src/articles/index.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
